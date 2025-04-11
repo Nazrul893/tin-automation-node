@@ -1,56 +1,66 @@
-const express = require('express');
-const puppeteer = require('puppeteer');
+const express = require("express");
+const cors = require("cors");
+const bodyParser = require("body-parser");
+const puppeteer = require("puppeteer");
+
 const app = express();
-const port = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(cors());
+app.use(bodyParser.json());
 
-app.post('/tin-check', async (req, res) => {
-    const { username, password } = req.body;
-
-    if (!username || !password) {
-        return res.status(400).json({ error: 'Username and password required' });
-    }
-
-    try {
-        const browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
-        const page = await browser.newPage();
-
-        // Login Page
-        await page.goto('https://secure.incometax.gov.bd/Registration/Login', {
-            waitUntil: 'networkidle2'
-        });
-
-        await page.type('#UserName', username);
-        await page.type('#Password', password);
-        await Promise.all([
-            page.click('#btnLogin'),
-            page.waitForNavigation({ waitUntil: 'networkidle2' })
-        ]);
-
-        // Go to TIN Certificate page
-        await page.goto('https://secure.incometax.gov.bd/ViewCertiifcate', {
-            waitUntil: 'networkidle2'
-        });
-
-        const content = await page.content();
-        await browser.close();
-
-        // Return raw HTML for now (you can extract specific info later)
-        res.send(content);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Automation failed' });
-    }
+app.get("/", (req, res) => {
+  res.send("TIN Automation Node Server is Running...");
 });
 
-app.get('/', (req, res) => {
-    res.send('TIN Automation Node Service is Running!');
+// Example endpoint: automate TIN certificate view
+app.post("/get-tin-info", async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username and password required" });
+  }
+
+  try {
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+    const page = await browser.newPage();
+
+    // Go to login page
+    await page.goto("https://secure.incometax.gov.bd/Registration/Login");
+
+    // Type username and password
+    await page.type("#UserName", username);
+    await page.type("#Password", password);
+
+    // Click Login
+    await Promise.all([
+      page.click("#btnSubmit"),
+      page.waitForNavigation({ waitUntil: "networkidle0" }),
+    ]);
+
+    // Navigate to Certificate page
+    await page.goto("https://secure.incometax.gov.bd/ViewCertiifcate");
+
+    // Wait and take screenshot (optional)
+    await page.waitForTimeout(2000);
+    const screenshot = await page.screenshot({ encoding: "base64" });
+
+    await browser.close();
+
+    res.json({
+      message: "TIN info retrieved successfully",
+      screenshot: screenshot,
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Automation failed", details: err.message });
+  }
 });
 
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
