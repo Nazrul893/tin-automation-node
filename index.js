@@ -1,66 +1,53 @@
-const express = require("express");
-const cors = require("cors");
-const bodyParser = require("body-parser");
-const puppeteer = require("puppeteer");
+const express = require('express');
+const puppeteer = require('puppeteer');
 
 const app = express();
+app.use(express.json());
 
-app.use(cors());
-app.use(bodyParser.json());
-
-app.get("/", (req, res) => {
-  res.send("TIN Automation Node Server is Running...");
-});
-
-// Example endpoint: automate TIN certificate view
-app.post("/get-tin-info", async (req, res) => {
+app.post('/', async (req, res) => {
   const { username, password } = req.body;
-
-  if (!username || !password) {
-    return res.status(400).json({ error: "Username and password required" });
-  }
 
   try {
     const browser = await puppeteer.launch({
-      headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      headless: true,
+      executablePath: '/usr/bin/google-chrome', // Render এর জন্য দরকার
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
+
     const page = await browser.newPage();
+    await page.goto('https://secure.incometax.gov.bd/Registration/Login');
 
-    // Go to login page
-    await page.goto("https://secure.incometax.gov.bd/Registration/Login");
+    await page.type('#userId', username);
+    await page.type('#password', password);
+    await page.click('#loginButton');
 
-    // Type username and password
-    await page.type("#UserName", username);
-    await page.type("#Password", password);
+    await page.waitForNavigation();
+    const currentURL = page.url();
 
-    // Click Login
-    await Promise.all([
-      page.click("#btnSubmit"),
-      page.waitForNavigation({ waitUntil: "networkidle0" }),
-    ]);
+    if (currentURL.includes('TINHome')) {
+      await page.goto('https://secure.incometax.gov.bd/ViewCertiifcate');
 
-    // Navigate to Certificate page
-    await page.goto("https://secure.incometax.gov.bd/ViewCertiifcate");
+      const data = await page.evaluate(() => {
+        const cert = document.querySelector('#certificate');
+        return cert ? cert.innerText : 'Certificate not found';
+      });
 
-    // Wait and take screenshot (optional)
-    await page.waitForTimeout(2000);
-    const screenshot = await page.screenshot({ encoding: "base64" });
+      await browser.close();
+      return res.json({ success: true, data });
+    } else {
+      await browser.close();
+      return res.status(401).json({ error: 'Invalid credentials or login failed' });
+    }
 
-    await browser.close();
-
-    res.json({
-      message: "TIN info retrieved successfully",
-      screenshot: screenshot,
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Automation failed',
+      details: error.message
     });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Automation failed", details: err.message });
   }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log('TIN Automation Node Server is Running on port', PORT);
 });
