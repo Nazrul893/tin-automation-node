@@ -1,11 +1,11 @@
-const puppeteer = require('puppeteer');
 const express = require('express');
+const puppeteer = require('puppeteer');
 const app = express();
-const PORT = process.env.PORT || 3000;
+const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
-app.post('/get-tin-info', async (req, res) => {
+app.post('/tin-check', async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -17,27 +17,40 @@ app.post('/get-tin-info', async (req, res) => {
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
-
         const page = await browser.newPage();
-        await page.goto('https://secure.incometax.gov.bd/Registration/Login');
 
-        await page.type('#userId', username);
-        await page.type('#password', password);
-        await page.click('#btnLogin');
-        await page.waitForNavigation();
+        // Login Page
+        await page.goto('https://secure.incometax.gov.bd/Registration/Login', {
+            waitUntil: 'networkidle2'
+        });
 
-        await page.goto('https://secure.incometax.gov.bd/ViewCertiifcate');
+        await page.type('#UserName', username);
+        await page.type('#Password', password);
+        await Promise.all([
+            page.click('#btnLogin'),
+            page.waitForNavigation({ waitUntil: 'networkidle2' })
+        ]);
+
+        // Go to TIN Certificate page
+        await page.goto('https://secure.incometax.gov.bd/ViewCertiifcate', {
+            waitUntil: 'networkidle2'
+        });
 
         const content = await page.content();
         await browser.close();
 
+        // Return raw HTML for now (you can extract specific info later)
         res.send(content);
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: 'Something went wrong' });
+        console.error(error);
+        res.status(500).json({ error: 'Automation failed' });
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+app.get('/', (req, res) => {
+    res.send('TIN Automation Node Service is Running!');
+});
+
+app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
 });
